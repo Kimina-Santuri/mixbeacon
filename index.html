@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07101a" />
+    <title>MixBeacon — identify a DJ mix</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .verify{margin-top:24px;padding-top:16px;border-top:1px solid var(--line);text-align:left}.verify p,.verify span,.verify-file,.verify-button{font:9px "DM Mono",monospace;letter-spacing:.04em}.verify p{margin:0 0 10px}.verify-file{display:block;border-bottom:1px solid #777;padding:9px 0}.verify-file input{display:none}.verify-button{margin-top:12px;padding:9px 0;background:transparent;border:0;border-bottom:1px solid var(--ink);color:var(--ink);cursor:pointer}.verify-button:disabled{opacity:.4}.verify span{display:block;margin-top:10px;color:#666;line-height:1.4}
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <a class="brand" href="#top" aria-label="MixBeacon home">K.</a>
+        <span class="site-type">SOUND.SYSTEMS.UTILITY</span>
+        <span class="status"><b></b> v0.1 / browser-first</span>
+      </header>
+
+      <section class="hero" id="top">
+        <svg class="orbit" viewBox="0 0 1000 430" aria-hidden="true"><path d="M86 76C211 389 822 384 908 53S152 143 190 391 960 192 805 19 5 249 244 408 1039 151 840 393 22 152 172 28 872 374 962 148"/><path d="M50 270C255 21 819 26 947 220S219 434 75 155 845 52 898 322 55 376 212 63 939 288 742 404 23 175 340 22"/><path d="M218 9C-3 330 349 419 778 351S906 68 610 21 87 351 386 399 966 239 871 60 236 66 92 315"/></svg>
+        <p class="eyebrow">A MIX IDENTIFICATION EXPERIMENT</p>
+        <h1>mix<br />beacon<span>.</span></h1>
+        <div class="hero-note"><p>Give a DJ mix a name it can carry through sound.</p><p>Near-ultrasonic ID / local-first / Nairobi</p></div>
+      </section>
+
+      <section class="grid" aria-label="MixBeacon tools">
+        <article class="panel encode">
+          <div class="panel-heading"><span>01 / 02</span><h2>Mark<br />a mix.</h2></div>
+          <p class="help">Your file never leaves this device. MixBeacon lays a quiet, repeating marker under the full length of a mix, then returns a WAV.</p>
+          <label class="field"><span>Mix name</span><input id="mixName" maxlength="80" placeholder="e.g. Nairobi Afterhours #01" /></label>
+          <label class="field"><span>Audio file</span><input id="audioFile" type="file" accept="audio/*" /></label>
+          <div class="row"><label class="field"><span>Beacon strength</span><select id="strength"><option value="0.008">Light — least noticeable</option><option value="0.016" selected>Normal — start here</option><option value="0.03">Strong — best for testing</option></select></label><label class="field"><span>Mix code</span><input id="mixCode" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="auto" /></label></div>
+          <button id="encodeButton" class="primary">Create marked WAV <span>↓</span></button>
+          <p class="fineprint">A browser-only prototype: decoding requires this browser to know the mix name. A live version would look the code up from a tiny public database.</p>
+          <div class="progress hidden" id="encodeProgress"><div><i></i></div><span>Preparing audio…</span></div>
+        </article>
+
+        <article class="panel listen">
+          <div class="panel-heading"><span>02 / 02</span><h2>Listen<br />for it.</h2></div>
+          <p class="help">Play a marked mix through speakers. Keep this page open nearby, then let its microphone listen for the marker.</p>
+          <div class="radar" id="radar"><div class="radar-ring r1"></div><div class="radar-ring r2"></div><div class="radar-ring r3"></div><i></i></div>
+          <p class="listen-state" id="listenState">Ready to listen</p>
+          <button id="listenButton" class="outline">Start microphone</button>
+          <div class="result" id="result" aria-live="polite"><span>Waiting for two valid beacon frames</span></div>
+          <div class="verify">
+            <p>DIAGNOSTIC / NO MICROPHONE</p>
+            <label class="verify-file" for="verifyFile"><span id="verifyFileName">Choose marked WAV or MP4</span><input id="verifyFile" type="file" accept="audio/*,video/mp4,.wav,.mp4" /></label>
+            <button id="verifyButton" class="verify-button">Verify file marker →</button>
+            <span id="verifyState" aria-live="polite">Checks the encoded audio directly.</span>
+          </div>
+          <p class="fineprint">For a meaningful test, use a real platform upload/download and at least one actual phone. Some codecs and hardware remove this frequency range.</p>
+        </article>
+      </section>
+
+      <section class="how">
+        <div><p class="eyebrow">FIELD TEST / 001</p><h2>Test the<br />whole journey.</h2></div>
+        <ol><li><b>1</b> Mark a short WAV or MP3 source and download the result.</li><li><b>2</b> Upload it to SoundCloud or Mixcloud, then play the stream from normal speakers.</li><li><b>3</b> Open this page on a phone, tap listen, and record whether it identifies the mix.</li></ol>
+      </section>
+
+      <section class="notice"><strong>Prototype constraint</strong><p>17–19 kHz is not guaranteed to survive platform transcoding, phone microphones, Bluetooth, or every speaker. This is intentionally a test harness—not a claim of production-grade watermarking. The marker is designed to identify the <em>mix</em>; track recognition can be added separately later.</p></section>
+    </main>
+    <footer><span>KIMINA / NAIROBI © 2026</span><span>MADE FOR TESTING, NOT HOSTING AUDIO.</span><span>MIXBEACON / 0.1</span></footer>
+    <script src="app.js"></script>
+  </body>
+</html>

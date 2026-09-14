@@ -1,0 +1,19 @@
+.DS_Store
+
+# Local audio/video fixtures stay on this device.
+test/
+*.wav
+*.mp3
+*.mp4
+*.m4a
+*.aac
+*.aiff
+*.aif
+*.flac
+*.ogg
+*.webm
+
+# Local configuration and credentials.
+.env
+.env.*
+!.env.example
