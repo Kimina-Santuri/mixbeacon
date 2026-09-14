@@ -66,12 +66,78 @@ $('encodeButton').addEventListener('click', async () => {
 });
 
 let audioContext, micStream, processor, samples=[], listening=false, confirmations=new Map();
+let diagnostic, diagnosticTimer, totalSymbols=0, lastDecodedStart=-1;
+function resetDiagnostic() {
+  diagnostic={callbacks:0,lastAudio:null,frames:0,code:null,settings:{},mic:null,zero:null,one:null,started:performance.now()};
+  totalSymbols=0; lastDecodedStart=-1;
+  for(const id of ['diagMic','diagZero','diagOne','diagCode','diagRates','diagProcessing','diagContext']) $(id).textContent='—';
+  for(const id of ['diagMicMeter','diagZeroMeter','diagOneMeter']) $(id).value=-100;
+  $('diagCallbacks').textContent='0'; $('diagFrames').textContent='0'; $('diagCopyState').textContent='';
+}
+function powerDb(power) { return power>0 ? 10*Math.log10(power) : -Infinity; }
+function showLevel(id, value) {
+  $(id).textContent=Number.isFinite(value) ? `${value.toFixed(1)} dBFS` : 'Below measurement floor';
+  $(`${id}Meter`).value=Number.isFinite(value) ? Math.max(-100,Math.min(0,value)) : -100;
+}
+function measureSymbol(frame, rate) {
+  let energy=0; for(const sample of frame) energy+=sample*sample;
+  diagnostic.mic=powerDb(energy/frame.length);
+  const measurable=rate/2>F1;
+  diagnostic.zero=measurable ? powerDb(2*Math.max(0,goertzel(frame,F0,rate))/(frame.length*frame.length)) : null;
+  diagnostic.one=measurable ? powerDb(2*Math.max(0,goertzel(frame,F1,rate))/(frame.length*frame.length)) : null;
+}
+function renderDiagnostic() {
+  if(!diagnostic) return;
+  $('diagCallbacks').textContent=String(diagnostic.callbacks);
+  $('diagFrames').textContent=String(diagnostic.frames);
+  $('diagCode').textContent=diagnostic.code || '—';
+  $('diagContext').textContent=audioContext?.state || 'Not started';
+  for(const [id,value] of [['diagMic',diagnostic.mic],['diagZero',diagnostic.zero],['diagOne',diagnostic.one]]) {
+    if(value!==null) showLevel(id,value);
+  }
+  if(!listening) return;
+  const now=performance.now(), settings=diagnostic.settings;
+  let message;
+  if(audioContext.state!=='running') message=`Audio engine ${audioContext.state} — stop and restart the microphone with this page visible.`;
+  else if(diagnostic.lastAudio===null) message=now-diagnostic.started>3000 ? 'Microphone opened, but no audio callbacks are arriving. Stop and restart the microphone.' : 'Microphone opened — waiting for audio callbacks…';
+  else if(now-diagnostic.lastAudio>2000) message='Audio callbacks have stalled. Keep this page visible; stop and restart if needed.';
+  else if(audioContext.sampleRate/2<=F1 || (settings.sampleRate && settings.sampleRate/2<=F1)) message='Reported sample rate is too low to capture both beacon carriers.';
+  else if(diagnostic.mic===null) message='Audio callbacks arriving — collecting the first 250 ms window…';
+  else if(diagnostic.mic < -90) message='Audio callbacks arriving, but input is near silent. Check the microphone route and playback.';
+  else message='Audio samples arriving. Compare the carrier levels with playback off and on; valid frames confirm decoding.';
+  $('micDiagnosticStatus').textContent=message;
+}
+function showMicSettings() {
+  const settings=diagnostic.settings;
+  $('diagRates').textContent=`Mic: ${settings.sampleRate ? settings.sampleRate+' Hz' : 'not reported'} / engine: ${audioContext.sampleRate} Hz`;
+  const describe=key=>settings[key]===true?'on':settings[key]===false?'off':'not reported';
+  $('diagProcessing').textContent=`Echo: ${describe('echoCancellation')}; noise: ${describe('noiseSuppression')}; auto gain: ${describe('autoGainControl')}`;
+}
+$('copyDiagnostic').addEventListener('click', async () => {
+  renderDiagnostic();
+  const rows=[['Status','micDiagnosticStatus'],['Callbacks','diagCallbacks'],['Microphone','diagMic'],['17.2 kHz','diagZero'],['18.4 kHz','diagOne'],['Valid frames','diagFrames'],['Latest code','diagCode'],['Audio engine','diagContext'],['Sample rates','diagRates'],['Processing','diagProcessing']];
+  const report=['MixBeacon microphone diagnostic',new Date().toISOString(),`Browser: ${navigator.userAgent}`,...rows.map(([label,id])=>`${label}: ${$(id).textContent}`),'No audio is included in this report.'].join('\n');
+  try { await navigator.clipboard.writeText(report); $('diagCopyState').textContent='Report copied — paste it into the chat.'; }
+  catch { $('diagCopyState').textContent='Clipboard unavailable. Copy this report:'; const output=document.createElement('textarea'); output.value=report; output.readOnly=true; output.setAttribute('aria-label','Diagnostic report'); output.style.width='100%'; output.rows=12; $('diagCopyState').appendChild(output); output.select(); }
+});
 function goertzel(data, frequency, sampleRate) { const k=Math.round(data.length*frequency/sampleRate), omega=2*Math.PI*k/data.length, coeff=2*Math.cos(omega); let q0=0,q1=0,q2=0; for(const x of data){q0=coeff*q1-q2+x;q2=q1;q1=q0;} return q1*q1+q2*q2-coeff*q1*q2; }
 function analyseFrame(frame, rate) { return goertzel(frame,F1,rate)>goertzel(frame,F0,rate)?'1':'0'; }
 function decodeFrame(candidate) { let syncErrors=0; for(let i=0;i<PREAMBLE.length;i++) if(candidate[i]!==PREAMBLE[i]) syncErrors++; if(syncErrors>1) return null; let message='', corrections=0; const coded=candidate.slice(PREAMBLE.length); for(let i=0;i<coded.length;i+=7) { const decoded=hammingDecode(coded.slice(i,i+7)); message+=decoded.bits; corrections+=Number(decoded.corrected); } const payload=message.slice(0,16), receivedCrc=message.slice(16); if(crc8(payload)!==receivedCrc) return null; const code=String(parseInt(payload,2)); if(Number(code)<1000 || Number(code)>9999) return null; return {code, corrections, syncErrors}; }
 function decodeLegacyFrame(candidate) { if(candidate.length<31 || candidate.slice(0,PREAMBLE.length)!==PREAMBLE) return null; const payload=candidate.slice(16,30), code=String(parseInt(payload,2)); return legacyParity(payload)===candidate[30] && Number(code)>=1000 && Number(code)<=9999 ? code : null; }
 function confirm(frame) { const now=performance.now(), previous=confirmations.get(frame.code); let count=1; if(previous) count=now-previous.last > FRAME_DURATION_MS*.6 ? previous.count+1 : previous.count; confirmations.set(frame.code,{count,last:now}); if(count>=REQUIRED_CONFIRMATIONS) return found(frame.code); $('result').className='result'; $('result').textContent=`Valid beacon found — confirming (${count}/${REQUIRED_CONFIRMATIONS})`; }
-function tryDecode() { const frameBits=samples.join(''); if(frameBits.length<FRAME_BITS)return; for(let start=Math.max(0,frameBits.length-FRAME_BITS-3);start<=frameBits.length-FRAME_BITS;start++){ const frame=decodeFrame(frameBits.slice(start,start+FRAME_BITS)); if(frame) return confirm(frame); } }
+function tryDecode() {
+  const frameBits=samples.join(''); if(frameBits.length<FRAME_BITS)return;
+  for(let start=Math.max(0,frameBits.length-FRAME_BITS-3);start<=frameBits.length-FRAME_BITS;start++) {
+    const absoluteStart=totalSymbols-frameBits.length+start;
+    if(absoluteStart<=lastDecodedStart) continue;
+    const frame=decodeFrame(frameBits.slice(start,start+FRAME_BITS));
+    if(frame) {
+      lastDecodedStart=absoluteStart;
+      diagnostic.frames++; diagnostic.code=frame.code;
+      return confirm(frame);
+    }
+  }
+}
 function found(code) { const entry=registry[code]; $('result').className='result found'; $('result').textContent=entry ? `Identified: ${entry.name}` : `Verified beacon — mix code ${code}`; if(navigator.vibrate)navigator.vibrate(80); samples=[]; confirmations.clear(); }
 async function verifyMarkedFile() {
   const file=$('verifyFile').files[0], button=$('verifyButton'), state=$('verifyState');
@@ -97,8 +163,51 @@ async function verifyMarkedFile() {
 $('verifyButton').addEventListener('click',verifyMarkedFile);
 $('verifyFile').addEventListener('change', event => { $('verifyFileName').textContent=event.target.files[0]?.name || 'Choose marked WAV or MP4'; $('verifyState').textContent=event.target.files[0] ? 'Ready to verify this file directly.' : 'Checks the encoded audio directly.'; $('verifyState').style.color=''; });
 async function startListening(){
-  try { confirmations.clear(); audioContext=new AudioContext(); micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}); const src=audioContext.createMediaStreamSource(micStream); processor=audioContext.createScriptProcessor(4096,1,1); let pool=[]; const needed=Math.round(audioContext.sampleRate*SYMBOL_SECONDS); processor.onaudioprocess=e=>{pool.push(...e.inputBuffer.getChannelData(0)); while(pool.length>=needed){samples.push(analyseFrame(pool.splice(0,needed),audioContext.sampleRate)); if(samples.length>160)samples.shift(); tryDecode();}}; src.connect(processor); processor.connect(audioContext.destination); listening=true; $('radar').classList.add('listening'); $('listenButton').textContent='Stop microphone'; $('listenButton').classList.add('stop'); $('listenState').textContent='Listening for 17.2 / 18.4 kHz…'; $('result').className='result'; $('result').textContent='Searching for a verified beacon'; }
-  catch(e){ alert('Microphone access is needed to identify a mix. Use HTTPS or localhost, then allow microphone access.'); console.error(e); }
+  const button=$('listenButton'); button.disabled=true;
+  resetDiagnostic(); samples=[]; confirmations.clear();
+  $('micDiagnosticStatus').textContent='Requesting microphone access…';
+  try {
+    audioContext=new AudioContext();
+    // Resume during the user gesture; do not assume an opened mic means a running engine.
+    audioContext.resume().catch(console.error);
+    micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    diagnostic.settings=micStream.getAudioTracks()[0]?.getSettings?.() || {};
+    showMicSettings();
+    const src=audioContext.createMediaStreamSource(micStream);
+    processor=audioContext.createScriptProcessor(4096,1,1);
+    let pool=[]; const needed=Math.round(audioContext.sampleRate*SYMBOL_SECONDS);
+    processor.onaudioprocess=e=>{
+      if(!listening) return;
+      diagnostic.callbacks++; diagnostic.lastAudio=performance.now();
+      pool.push(...e.inputBuffer.getChannelData(0));
+      while(pool.length>=needed){
+        const frame=pool.splice(0,needed);
+        measureSymbol(frame,audioContext.sampleRate);
+        samples.push(analyseFrame(frame,audioContext.sampleRate)); totalSymbols++;
+        if(samples.length>160)samples.shift();
+        tryDecode();
+      }
+    };
+    src.connect(processor); processor.connect(audioContext.destination);
+    listening=true; diagnostic.started=performance.now();
+    $('radar').classList.add('listening'); button.textContent='Stop microphone'; button.classList.add('stop');
+    $('listenState').textContent='Listening for 17.2 / 18.4 kHz…';
+    $('result').className='result'; $('result').textContent='Searching for a verified beacon';
+    renderDiagnostic(); diagnosticTimer=setInterval(renderDiagnostic,250);
+  } catch(e){
+    stopListening();
+    $('micDiagnosticStatus').textContent=`Microphone could not start (${e.name || 'Error'}). Use HTTPS, allow microphone access, and try again.`;
+    console.error(e);
+  } finally { button.disabled=false; }
 }
-function stopListening(){listening=false; processor?.disconnect(); micStream?.getTracks().forEach(t=>t.stop()); audioContext?.close(); $('radar').classList.remove('listening'); $('listenButton').textContent='Start microphone'; $('listenButton').classList.remove('stop'); $('listenState').textContent='Ready to listen';}
+function stopListening(){
+  listening=false; clearInterval(diagnosticTimer);
+  if(processor){ processor.onaudioprocess=null; processor.disconnect(); processor=null; }
+  micStream?.getTracks().forEach(t=>t.stop()); micStream=null;
+  const closing=audioContext;
+  if(closing && closing.state!=='closed') closing.close().then(()=>{if(audioContext===closing)renderDiagnostic();}).catch(console.error);
+  samples=[]; confirmations.clear();
+  $('radar').classList.remove('listening'); $('listenButton').textContent='Start microphone'; $('listenButton').classList.remove('stop'); $('listenState').textContent='Ready to listen';
+  renderDiagnostic(); $('micDiagnosticStatus').textContent='Microphone stopped. Last readings are retained until the next test.';
+}
 $('listenButton').addEventListener('click',()=>listening?stopListening():startListening());

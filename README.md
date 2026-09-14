@@ -35,6 +35,19 @@ If WAV verification passes but microphone detection fails, investigate speaker/m
 
 The expected failure point is the real-world audio chain: a platform may low-pass or otherwise alter the 17–19 kHz band, and some speakers/microphones may not reproduce it. Do not move on to a hosted database or polished workflow until this works often enough in the intended conditions.
 
+## Live microphone diagnostic
+
+Refresh the page to load the diagnostic panel below **Start microphone**. Play the verified WAV from a separate device, keep the phone page visible, and listen for 30–60 seconds. Tap **Copy diagnostic report** while playback is still running and paste the report with your phone model, browser, speaker and distance. Reports contain readings and browser information, never recorded audio.
+
+- **Audio callbacks** should keep increasing. Zero means the microphone opened but no samples reached the listener; a stalled counter or suspended audio engine indicates an audio capture/processing issue.
+- **Microphone level** measures total incoming audio. The **17.2 / 18.4 kHz** meters measure energy at the carrier frequencies over each 250 ms window. Less negative dBFS means stronger; these are digital levels, not acoustic sound pressure measurements. Compare playback off and on. Carrier energy alone does not prove a valid beacon.
+- **Valid frames** counts distinct decoded frame positions; two matching independent frames are still needed for identification. The latest valid code remains visible after stopping.
+- **Sample rates / Mic processing** show settings reported by the browser. “Not reported” does not mean processing is off. A reported rate at or below 36.8 kHz cannot represent both carriers.
+
+The diagnostic does not change the beacon format or add symbol timing recovery. Existing current-protocol WAV files can be used without re-encoding.
+
+Run the synthetic signal and diagnostic checks with `node --test tests/diagnostic.test.cjs`.
+
 ## Before production
 
 This is deliberately not a production watermarking implementation. A usable public service needs a server-side mix-code lookup, authentication/abuse controls, collision-resistant identifiers, error correction, real device testing, and a more robust psychoacoustic watermark if the ultrasonic approach fails.

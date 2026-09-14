@@ -23,6 +23,8 @@ Open `http://localhost:4173` on the development machine. A phone on the same Wi-
 
 - Files created before the stronger protocol used a legacy 31-bit frame and cannot be identified by the live scanner. Re-encode after a hard refresh.
 - The in-page `Verify file marker` diagnostic tests WAV/MP4 audio directly without a microphone. Use it before acoustic or platform tests.
+- The live microphone diagnostic shows callback activity, digital microphone/carrier levels, distinct valid frames, audio engine state and browser-reported capture settings. `Copy diagnostic report` copies text only; no audio is stored or uploaded. Run `node --test tests/diagnostic.test.cjs` for synthetic diagnostic checks.
+- Laptop microphone and direct file verification have worked; an iPhone 13 opened the microphone but did not identify the mix. Its cause is unconfirmed, pending a live diagnostic report.
 - If WAV verification passes but microphone detection fails, investigate speaker/microphone frequency response. If WAV passes but MP4 fails, AAC conversion is the likely cause.
 - External platforms have so far failed to preserve the 17–18 kHz carrier. Do not claim platform robustness.
 

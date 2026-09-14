@@ -47,6 +47,24 @@
           <p class="listen-state" id="listenState">Ready to listen</p>
           <button id="listenButton" class="outline">Start microphone</button>
           <div class="result" id="result" aria-live="polite"><span>Waiting for two valid beacon frames</span></div>
+          <details class="mic-diagnostic" open>
+            <summary>LIVE MICROPHONE DIAGNOSTIC</summary>
+            <p id="micDiagnosticStatus" role="status">Start the microphone to inspect incoming audio.</p>
+            <dl>
+              <div><dt>Audio callbacks</dt><dd id="diagCallbacks">0</dd></div>
+              <div><dt>Microphone level</dt><dd><meter id="diagMicMeter" min="-100" max="0" value="-100" aria-label="Microphone level in dBFS"></meter><span id="diagMic">—</span></dd></div>
+              <div><dt>17.2 kHz / 0</dt><dd><meter id="diagZeroMeter" min="-100" max="0" value="-100" aria-label="17.2 kHz level in dBFS"></meter><span id="diagZero">—</span></dd></div>
+              <div><dt>18.4 kHz / 1</dt><dd><meter id="diagOneMeter" min="-100" max="0" value="-100" aria-label="18.4 kHz level in dBFS"></meter><span id="diagOne">—</span></dd></div>
+              <div><dt>Valid frames</dt><dd id="diagFrames">0</dd></div>
+              <div><dt>Latest valid code</dt><dd id="diagCode">—</dd></div>
+              <div><dt>Audio engine</dt><dd id="diagContext">—</dd></div>
+              <div><dt>Sample rates</dt><dd id="diagRates">—</dd></div>
+              <div><dt>Mic processing</dt><dd id="diagProcessing">—</dd></div>
+            </dl>
+            <p class="diagnostic-help">Levels are digital dBFS, not room loudness. Less negative means stronger. Compare quiet playback with the marked WAV: the two carrier levels should alternate. Energy alone does not prove a beacon is present.</p>
+            <button id="copyDiagnostic" class="verify-button" type="button">Copy diagnostic report →</button>
+            <p id="diagCopyState" role="status"></p>
+          </details>
           <div class="verify">
             <p>DIAGNOSTIC / NO MICROPHONE</p>
             <label class="verify-file" for="verifyFile"><span id="verifyFileName">Choose marked WAV or MP4</span><input id="verifyFile" type="file" accept="audio/*,video/mp4,.wav,.mp4" /></label>
