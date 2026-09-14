@@ -17,7 +17,7 @@ function harness(rate=48000,settings={},failure=false) {
     createMediaStreamSource(){return {connect(){}};}
     createScriptProcessor(){return {connect(){},disconnect(){}};}
   }
-  const context=vm.createContext({document:{getElementById:element},localStorage:{getItem:()=>null},AudioContext:Context,performance:{now:()=>time},navigator:{userAgent:'Synthetic test',clipboard:{async writeText(s){copied=s;}},mediaDevices:{async getUserMedia(){if(failure)throw Object.assign(new Error('denied'),{name:'NotAllowedError'});return {getAudioTracks:()=>[track],getTracks:()=>[track]};}}},setInterval:()=>1,clearInterval(){},console:{error(){}},Float32Array});
+  const context=vm.createContext({requestAnimationFrame:fn=>fn(),document:{getElementById:element},localStorage:{getItem:()=>null},AudioContext:Context,performance:{now:()=>time},navigator:{userAgent:'Synthetic test',clipboard:{async writeText(s){copied=s;}},mediaDevices:{async getUserMedia(){if(failure)throw Object.assign(new Error('denied'),{name:'NotAllowedError'});return {getAudioTracks:()=>[track],getTracks:()=>[track]};}}},setInterval:()=>1,clearInterval(){},console:{error(){}},Float32Array});
   const run=code=>vm.runInContext(code,context);
   run(source);
   return {run,element,context,advance(ms){time+=ms;},get stopped(){return stopped;},get copied(){return copied;}};
@@ -49,7 +49,7 @@ test('reports missing callbacks, silence, stalled input, suspension and actual s
   h.run("audioContext.state='suspended'; renderDiagnostic()");assert.match(h.element('micDiagnosticStatus').textContent,/engine suspended/);
   h.run('stopListening()');assert.equal(h.stopped,true);
   await h.run("$('copyDiagnostic').click()");assert.match(h.copied,/No audio is included/);
-  await h.run('startListening()');assert.equal(h.run('diagnostic.callbacks'),0);assert.equal(h.run('samples.length'),0);
+  await h.run('startListening()');assert.equal(h.run('diagnostic.callbacks'),0);assert.equal(h.run('confirmations.size'),0);
 });
 test('two synthesized beacon frames count once each and identify the mix',async()=>{
   const h=harness();await h.run('startListening()');
@@ -68,4 +68,70 @@ test('low sample rates and permission failures produce useful status and cleanup
   assert.match(denied.element('micDiagnosticStatus').textContent,/NotAllowedError/);
   assert.equal(denied.run('audioContext.state'),'closed');
   assert.equal(denied.element('listenButton').disabled,false);
+});
+
+function synthesize(bits, speed, rate, {offset=0,frames=3,txRate=rate,noise=0}={}) {
+  const txSymbol=Math.round(txRate*speed.seconds), frameSeconds=bits.length*txSymbol/txRate;
+  let seed=7;
+  return Float32Array.from({length:Math.ceil(frames*frameSeconds*rate)},(_,i)=>{
+    const t=i/rate+offset, sample=Math.floor(t*txRate), within=sample%(txSymbol*bits.length);
+    const bit=bits[Math.floor(within/txSymbol)], frequency=bit==='0'?17200:18400;
+    seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+    return .03*Math.sin(2*Math.PI*frequency*t)+noise*(seed/4294967296-.5);
+  });
+}
+function feed(h,data,rate) {
+  for(let i=0;i<data.length;i+=4096) {
+    h.context.signal=data.subarray(i,i+4096);h.advance(h.context.signal.length/rate*1000);
+    h.run('processor.onaudioprocess({inputBuffer:{getChannelData:()=>signal}})');
+  }
+  h.run('renderDiagnostic()');
+}
+test('auto detects every speed across sample rates and arbitrary playback offsets',async()=>{
+  for(const rate of [44100,48000]) for(const id of ['1','2','4']) for(const phase of [0,.49,.87]) {
+    const h=harness(rate);await h.run('startListening()');
+    const speed=h.run(`BEACON_SPEEDS.find(s=>s.id==='${id}')`),bits=h.run("bitsFor('6789')");
+    const offset=(17+phase)*speed.seconds;
+    feed(h,synthesize(bits,speed,rate,{offset,frames:3,noise:.006}),rate);
+    assert.match(h.element('result').textContent,/mix code 6789/,`${rate} Hz / ${id}x / phase ${phase}`);
+    assert.equal(h.run('diagnostic.speed.id'),id);
+    assert.ok(h.run('diagnostic.firstIdentification')<=3*58*speed.seconds+.3);
+  }
+});
+test('one physical frame cannot confirm through multiple timing offsets',async()=>{
+  const h=harness();await h.run('startListening()');
+  const speed=h.run('BEACON_SPEEDS[2]'),bits=h.run("bitsFor('4321')");
+  feed(h,synthesize(bits,speed,48000,{frames:1}),48000);
+  assert.equal(h.run('diagnostic.frames'),1);
+  assert.equal(h.run('diagnostic.firstIdentification'),null);
+  assert.doesNotMatch(h.element('result').textContent,/Verified beacon/);
+});
+test('mixed encoder and receiver sample rates still detect rounded fast symbols',async()=>{
+  for(const [txRate,rate] of [[44100,48000],[48000,44100]]) {
+    const h=harness(rate);await h.run('startListening()');
+    const speed=h.run('BEACON_SPEEDS[2]'),bits=h.run("bitsFor('5678')");
+    feed(h,synthesize(bits,speed,rate,{txRate,offset:.731,frames:3}),rate);
+    assert.match(h.element('result').textContent,/mix code 5678/);
+  }
+});
+test('silence, broadband noise and an unmodulated carrier do not identify a mix',async()=>{
+  for(const kind of ['silence','noise','tone']) {
+    const h=harness();await h.run('startListening()');let seed=15;
+    const signal=Float32Array.from({length:48000*32},(_,i)=>{
+      seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+      return kind==='noise' ? .1*(seed/4294967296-.5) : kind==='tone' ? .03*Math.sin(2*Math.PI*17200*i/48000) : 0;
+    });
+    feed(h,signal,48000);assert.equal(h.run('diagnostic.firstIdentification'),null,kind);
+  }
+});
+test('direct file verification automatically reports all speeds',async()=>{
+  for(const id of ['1','2','4']) {
+    const h=harness();const speed=h.run(`BEACON_SPEEDS.find(s=>s.id==='${id}')`),bits=h.run("bitsFor('4321')");
+    h.context.fileSignal=synthesize(bits,speed,48000,{frames:3,offset:.127});
+    h.run('AudioContext.prototype.decodeAudioData=async()=>({sampleRate:48000,getChannelData:()=>fileSignal})');
+    h.element('verifyFile').files=[{arrayBuffer:async()=>new ArrayBuffer(0)}];
+    await h.run('verifyMarkedFile()');
+    assert.match(h.element('verifyState').textContent,new RegExp(`4321 / ${id}×`));
+    assert.equal(h.element('verifyButton').disabled,false);
+  }
 });

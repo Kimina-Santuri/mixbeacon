@@ -17,10 +17,30 @@ Open `http://localhost:4173`. Use HTTPS when testing microphone access away from
 - Takes a local 44.1 kHz+ audio file and returns a locally generated WAV.
 - Mixes a low-amplitude, continuous FSK watermark through the entire file.
 - Uses 17.2 kHz for `0` and 18.4 kHz for `1`.
-- Repeats a 58-bit frame every 14.5 seconds: a fixed synchronisation preamble plus a Hamming(7,4)-protected mix code and CRC-8 integrity check.
-- Requires two independent valid frames before confirming a mix, which normally takes about 30 seconds of clean listening.
+- Repeats a 58-bit frame at selectable 1×, 2× or 4× speed: a fixed synchronisation preamble plus a Hamming(7,4)-protected mix code and CRC-8 integrity check.
+- Requires two non-overlapping valid frames with the same code and speed before confirming a mix.
 - Listens through the browser microphone and uses Goertzel frequency detection to recover the code.
 - Stores mix-code/name mappings only in the current browser's local storage for this prototype.
+
+## Faster transmission experiment
+
+The mix ID, CRC, error correction and two carrier frequencies stay the same. Only the symbol duration changes; this experiment still sends an ID, not the mix name.
+
+| Speed | Symbol duration | Bit rate | Frame duration | Two-frame identification from arbitrary playback position* |
+| --- | --- | --- | --- | --- |
+| 1× baseline | 250 ms | 4 bits/s | 14.5 s | about 29–44 s |
+| 2× experimental | 125 ms | 8 bits/s | 7.25 s | about 15–22 s |
+| 4× experimental | 62.5 ms | 16 bits/s | 3.625 s | about 7–11 s |
+
+*Clean-signal timing estimates, not measured phone guarantees. Joining mid-frame can require waiting for the next complete frame before collecting two full frames. Missed frames add time. The former 15–30 s baseline estimate was optimistic for arbitrary playback starts.
+
+1. Refresh both laptop and phone. Use the same original **unmarked** 60-second source, mix code and **Strong** strength for every version. Never layer a faster marker over an already marked file.
+2. Select **2×** in Transmission speed, create the WAV, and run **Verify file marker**. The result should report the correct code and 2× speed.
+3. Play that file through the same speaker at the same volume and distance used for the successful phone test. Stop and restart the phone microphone for each trial.
+4. Repeat with **4×**, then use **1×** as the comparison. Download names include `-1x`, `-2x` or `-4x`.
+5. Run three trials per speed, starting playback at different positions. Record the displayed **First identification** time and copy the diagnostic report while playback continues. Allow 60 s before recording a failure.
+
+Synthetic checks cover all speeds at 44.1/48 kHz, arbitrary start phases, different encoder/receiver sample rates, duplicate-frame rejection, direct-file verification and negative signals. Faster-speed acoustic reliability still needs phone tests. The iPhone 13 has successfully identified the baseline code after the diagnostic update; the reason the earlier test failed is unconfirmed.
 
 ## Test order
 
@@ -40,11 +60,11 @@ The expected failure point is the real-world audio chain: a platform may low-pas
 Refresh the page to load the diagnostic panel below **Start microphone**. Play the verified WAV from a separate device, keep the phone page visible, and listen for 30–60 seconds. Tap **Copy diagnostic report** while playback is still running and paste the report with your phone model, browser, speaker and distance. Reports contain readings and browser information, never recorded audio.
 
 - **Audio callbacks** should keep increasing. Zero means the microphone opened but no samples reached the listener; a stalled counter or suspended audio engine indicates an audio capture/processing issue.
-- **Microphone level** measures total incoming audio. The **17.2 / 18.4 kHz** meters measure energy at the carrier frequencies over each 250 ms window. Less negative dBFS means stronger; these are digital levels, not acoustic sound pressure measurements. Compare playback off and on. Carrier energy alone does not prove a valid beacon.
+- **Microphone level** measures total incoming audio. The **17.2 / 18.4 kHz** meters measure energy at the carrier frequencies over each approximately 62.5 ms window. Less negative dBFS means stronger; these are digital levels, not acoustic sound pressure measurements. Compare playback off and on. Carrier energy alone does not prove a valid beacon.
 - **Valid frames** counts distinct decoded frame positions; two matching independent frames are still needed for identification. The latest valid code remains visible after stopping.
 - **Sample rates / Mic processing** show settings reported by the browser. “Not reported” does not mean processing is off. A reported rate at or below 36.8 kHz cannot represent both carriers.
 
-The diagnostic does not change the beacon format or add symbol timing recovery. Existing current-protocol WAV files can be used without re-encoding.
+The listener and file verifier automatically try all three speeds with four timing offsets per speed. Existing 250 ms current-protocol WAV files still work. Faster files require the updated listener. Multiple offsets reading the same physical frame count only once. This handles initial symbol alignment; it is not full clock-drift recovery.
 
 Run the synthetic signal and diagnostic checks with `node --test tests/diagnostic.test.cjs`.
 

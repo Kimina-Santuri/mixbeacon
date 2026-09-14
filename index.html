@@ -35,6 +35,9 @@
           <label class="field"><span>Mix name</span><input id="mixName" maxlength="80" placeholder="e.g. Nairobi Afterhours #01" /></label>
           <label class="field"><span>Audio file</span><input id="audioFile" type="file" accept="audio/*" /></label>
           <div class="row"><label class="field"><span>Beacon strength</span><select id="strength"><option value="0.008">Light — least noticeable</option><option value="0.016" selected>Normal — start here</option><option value="0.03">Strong — best for testing</option></select></label><label class="field"><span>Mix code</span><input id="mixCode" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="auto" /></label></div>
+          <label class="field"><span>Transmission speed</span><select id="beaconSpeed" aria-describedby="speedHint"><option value="1" selected>1× — baseline / 250 ms</option><option value="2">2× — experimental / 125 ms</option><option value="4">4× — experimental / 62.5 ms</option></select></label>
+          <p class="fineprint" id="speedHint" aria-live="polite"></p>
+          <p class="fineprint">Use the original unmarked source for each speed. The listener detects speed automatically. This experiment still transmits the mix code.</p>
           <button id="encodeButton" class="primary">Create marked WAV <span>↓</span></button>
           <p class="fineprint">A browser-only prototype: decoding requires this browser to know the mix name. A live version would look the code up from a tiny public database.</p>
           <div class="progress hidden" id="encodeProgress"><div><i></i></div><span>Preparing audio…</span></div>
@@ -57,6 +60,8 @@
               <div><dt>18.4 kHz / 1</dt><dd><meter id="diagOneMeter" min="-100" max="0" value="-100" aria-label="18.4 kHz level in dBFS"></meter><span id="diagOne">—</span></dd></div>
               <div><dt>Valid frames</dt><dd id="diagFrames">0</dd></div>
               <div><dt>Latest valid code</dt><dd id="diagCode">—</dd></div>
+              <div><dt>Detected speed</dt><dd id="diagSpeed">—</dd></div>
+              <div><dt>First identification</dt><dd id="diagTime">—</dd></div>
               <div><dt>Audio engine</dt><dd id="diagContext">—</dd></div>
               <div><dt>Sample rates</dt><dd id="diagRates">—</dd></div>
               <div><dt>Mic processing</dt><dd id="diagProcessing">—</dd></div>
